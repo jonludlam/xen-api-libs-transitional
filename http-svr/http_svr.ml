@@ -18,13 +18,13 @@
  *
  * HTTP CONNECT requests are not handled in the standard way! Normally, one
  * would issue a connect request like this:
- * 
+ *
  *    CONNECT host.domain:port HTTP/1.0
- * 
+ *
  * But we've got different proxies for different things, so we use the syntax
  *
  *    CONNECT /console?session_id=... HTTP/1.0
- * 
+ *
  * So we're not exactly standards compliant :)
  *
  *)
@@ -36,7 +36,7 @@ open Pervasiveext
 module D = Debug.Make(struct let name="http" end)
 open D
 
-type uri_path = string 
+type uri_path = string
 let make_uri_path x = x
 
 module Stats = struct
@@ -71,7 +71,7 @@ type 'a handler =
 let best_effort f =
   try f() with _ -> ()
 
-let headers s headers = 
+let headers s headers =
   output_http s headers;
   output_http s [""]
 
@@ -97,7 +97,7 @@ let response_of_request req hdrs =
 		~version:(get_return_version req) ~frame:req.Http.Request.frame
 		~headers:(connection :: cache :: hdrs) "200" "OK"
 
-let response_fct req ?(hdrs=[]) s (response_length: int64) (write_response_to_fd_fn: Unix.file_descr -> unit) = 
+let response_fct req ?(hdrs=[]) s (response_length: int64) (write_response_to_fd_fn: Unix.file_descr -> unit) =
 	let res = { response_of_request req hdrs with Http.Response.content_length = Some response_length } in
 	Unixext.really_write_string s (Http.Response.to_wire_string res);
 	write_response_to_fd_fn s
@@ -131,7 +131,7 @@ let response_unauthorised ?req label s =
 
 let response_forbidden ?req s =
 	let version = Opt.map get_return_version req in
-	let body = "<html><body><h1>HTTP 403 forbidden</h1>Access to the requested resource is forbidden.</body></html>" in	
+	let body = "<html><body><h1>HTTP 403 forbidden</h1>Access to the requested resource is forbidden.</body></html>" in
 	response_error_html ?version s "403" "Forbidden" [] body
 
 let response_badrequest ?req s =
@@ -167,24 +167,24 @@ let response_file ?mime_content_type s file =
 		)
 
 let respond_to_options req s =
-  let access_control_allow_headers = 
+  let access_control_allow_headers =
     try
       let acrh = List.assoc Hdr.acrh req.Request.additional_headers in
       Printf.sprintf "%s, X-Requested-With" acrh
-    with Not_found -> 
+    with Not_found ->
       "X-Requested-With"
   in
   response_fct req ~hdrs:[
     "Access-Control-Allow-Origin", "*";
     "Access-Control-Allow-Headers", access_control_allow_headers;
     "Access-Control-Allow-Methods","PUT"] s 0L (fun _ -> ())
-      
+
 
 (** If no handler matches the request then call this callback *)
-let default_callback req bio _ = 
+let default_callback req bio _ =
   response_forbidden (Buf_io.fd_of bio);
   req.Request.close <- true
-    
+
 let default_stats = Stats.empty ()
 let default_stats_m = Mutex.create ()
 
@@ -249,10 +249,10 @@ exception Too_many_headers
 exception Generic_error of string
 
 let request_of_bio_exn_slow ic =
-    (* Try to keep the connection open for a while to prevent spurious End_of_file type 
+    (* Try to keep the connection open for a while to prevent spurious End_of_file type
 	   problems under load *)
 	let initial_timeout = 5. *. 60. in
-  
+
 	let content_length = ref (-1L) in
 	let cookie = ref "" in
 	let transfer_encoding = ref None in
@@ -339,7 +339,8 @@ let request_of_bio_exn bio =
 	flush stdout;
 *)
 	let open Http.Request in
-	snd(List.fold_left
+	Http_stats.time_this "diagnostic: request_of_bio_inner" (fun () -> [])
+	(fun () -> snd(List.fold_left
 		(fun (status, req) header ->
 			if not status then begin
 				match String.split_f String.isspace header with
@@ -379,7 +380,7 @@ let request_of_bio_exn bio =
 						end
 					| _ -> true, req (* end of headers *)
 			end
-		) (false, { empty with Http.Request.frame = frame }) (String.split '\n' buf))
+		) (false, { empty with Http.Request.frame = frame }) (String.split '\n' buf)))
 
 (** [request_of_bio ic] returns [Some req] read from [ic], or [None]. If [None] it will have
 	already sent back a suitable error code and response to the client. *)
@@ -457,7 +458,7 @@ let handle_one (x: 'a Server.t) ss context req =
 				response_internal_error ~req ss ~extra:(Printf.sprintf "Got UNIX error: %s %s %s" (Unix.error_message a) b c)
 			| exc ->
 				response_internal_error ~req ss ~extra:(escape (Printexc.to_string exc));
-				log_backtrace ()			
+				log_backtrace ()
 		);
 		!finished
 
@@ -470,7 +471,7 @@ let handle_connection (x: 'a Server.t) _ ss =
 		let req = request_of_bio ~use_fastpath:x.Server.use_fastpath ic in
 
 		(* 2. now we attempt to process the request *)
-		finished := Opt.default true (Opt.map (handle_one x ss x.Server.default_context) req);
+		finished := Http_stats.time_this "diagnostic: handle_one" (fun () -> []) (fun () -> Opt.default true (Opt.map (handle_one x ss x.Server.default_context) req));
 	done;
 	Unix.close ss
 
@@ -554,7 +555,7 @@ module Chunked = struct
                mutable read_headers : bool; bufio : Buf_io.t }
 
     let of_bufio bufio =
-        { current_size = 0; current_offset = 0; bufio = bufio; 
+        { current_size = 0; current_offset = 0; bufio = bufio;
           read_headers = true }
 
     let rec read chunk size =
@@ -567,7 +568,7 @@ module Chunked = struct
             chunk.current_offset <- 0;
             chunk.read_headers <- false;
         end ;
-        
+
         (* read as many bytes from this chunk as possible *)
         if chunk.current_size = 0 then ""
 	else begin
@@ -587,14 +588,14 @@ module Chunked = struct
                 end else begin
                     (* partway through a chunk. *)
                     chunk.current_offset <- (chunk.current_offset + bytes_to_read)
-                end; 
+                end;
                 ( data ^ read chunk (size - bytes_to_read) )
             end
         end
 end
 
-let read_chunked_encoding req bio = 
-  let rec next () = 
+let read_chunked_encoding req bio =
+  let rec next () =
     let size = Buf_io.input_line bio in
     (* Strictly speaking need to kill anything past an ';' if present *)
     let size = String.strip String.isspace size in
@@ -607,6 +608,6 @@ let read_chunked_encoding req bio =
       (* Then get rid of the CRLF *)
       let blank = "\000\000" in
       Buf_io.really_input bio blank 0 2;
-      Http.Item (chunk, next) 
+      Http.Item (chunk, next)
   in
   next ()

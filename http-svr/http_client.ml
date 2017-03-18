@@ -35,14 +35,14 @@ exception Parse_error of string
 let http_rpc_send_query fd request =
 	Unixext.really_write_string fd (Http.Request.to_wire_string request)
 
-(* Internal exception thrown when reading a newline-terminated HTTP header when the 
+(* Internal exception thrown when reading a newline-terminated HTTP header when the
    connection is closed *)
 exception Http_header_truncated of string
 
 (* Tediously read an HTTP header byte-by-byte. At some point we need to add buffering
    but we'll need to encapsulate our file descriptor into more of a channel-like object
    to make that work. *)
-let input_line_fd (fd: Unix.file_descr) = 
+let input_line_fd (fd: Unix.file_descr) =
 	let buf = Buffer.create 20 in
 	let finished = ref false in
 	while not(!finished) do
@@ -83,7 +83,7 @@ let response_of_fd_exn_slow fd =
 				let line = input_line_fd fd in
 				(* NB input_line removes the final '\n'.
 				   RFC1945 says to expect a '\r\n' (- '\n' = '\r') *)
-				match line with       
+				match line with
 					| "" | "\r" -> end_of_headers := true
 					| x ->
 						let k, v = match String.split ~limit:2 ':' x with
@@ -120,7 +120,7 @@ let response_of_fd_exn fd =
 				match String.split ~limit:3 ' ' header with
 					| [ http_version; c; rest ] ->
 						begin match String.split ~limit:2 '/' http_version with
-							| [ "HTTP"; version ] -> 
+							| [ "HTTP"; version ] ->
 								true, { res with version = version; code = c; message = rest }
 							| _ ->
 								error "Failed to parse HTTP response status line [%s]" header;
@@ -171,5 +171,5 @@ let http_rpc_recv_response use_fastpath error_msg fd =
     On failure an exception is thrown. *)
 let rpc ?(use_fastpath=false) (fd: Unix.file_descr) request f =
 (*	Printf.printf "request = [%s]" (Http.Request.to_wire_string request);*)
-	http_rpc_send_query fd request;
-	f (http_rpc_recv_response use_fastpath (Http.Request.to_string request) fd) fd
+	Http_stats.time_this "diagnostic: Http_client.http_rpc_send_query" (fun () -> [Http.Request.to_wire_string request |> String.length |> float_of_int]) (fun () -> http_rpc_send_query fd request);
+	f (Http_stats.time_this "diagnostic: Http_client.http_rpc_recv_response" (fun () -> [!last_content_length |> Int64.to_float]) (fun () -> http_rpc_recv_response use_fastpath (Http.Request.to_string request) fd)) fd

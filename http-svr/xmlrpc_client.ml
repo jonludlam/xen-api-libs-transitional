@@ -46,7 +46,7 @@ let write_to_log x = StunnelDebug.debug "%s" (String.strip String.isspace x)
 
 (** Return true if this fd is connected to an HTTP server by sending an XMLRPC request
     for an unknown method and checking we get a matching MESSAGE_METHOD_UNKNOWN.
-    This is used to prevent us accidentally trying to reuse a connection which has been 
+    This is used to prevent us accidentally trying to reuse a connection which has been
     closed or left in some other inconsistent state. *)
 let check_reusable (x: Unix.file_descr) =
 	let msg_name = "system.isAlive" in
@@ -255,9 +255,9 @@ let with_transport transport f = match transport with
 					)
 			)
 
-let with_http request f s =
+let with_http ?(use_fastpath=false) request f s =
 	try
-		Http_client.rpc s request (fun response s -> f (response, s))
+		Http_client.rpc s ~use_fastpath request (fun response s -> f (response, s))
 	with Unix.Unix_error(Unix.ECONNRESET, _, _) -> raise Connection_reset
 
 let curry2 f (a, b) = f a b
@@ -313,7 +313,3 @@ end
 
 module XML_protocol = Protocol(XML)
 module XMLRPC_protocol = Protocol(XMLRPC)
-
-
-
-
